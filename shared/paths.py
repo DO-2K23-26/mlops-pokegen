@@ -2,28 +2,28 @@
 
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 CARDS_DIR = REPO_ROOT / "cards"
-MLOPS_DIR = REPO_ROOT / "mlops"
-CONFIGS_DIR = MLOPS_DIR / "configs"
+MLOPS_DIR = REPO_ROOT
+CONFIGS_DIR = REPO_ROOT / "configs"
 
 # Données brutes synchronisées depuis S3 (DVC) — voir 00_pull_data_dvc.ipynb
 DATA_RAW_DIR = REPO_ROOT / "data" / "raw"
 RAW_CARDS_DIR = DATA_RAW_DIR / "cards"
 
 # Dossiers d'étapes (ordre pipeline)
-DIR_00_PULL_DATA = MLOPS_DIR / "00_pull_data"
-DIR_01_FEATURE_ENGINEERING = MLOPS_DIR / "01_feature_engineering"
-DIR_02_PREPROCESSING = MLOPS_DIR / "02_preprocessing"
-DIR_03_TRAIN_MODEL = MLOPS_DIR / "03_train_model"
-DIR_04_EVALUATION = MLOPS_DIR / "04_evaluation"
-DIR_05_MODEL_REGISTRY = MLOPS_DIR / "05_model_registry"
-DIR_06_DEPLOYMENT = MLOPS_DIR / "06_deployment"
-DIR_07_MONITORING = MLOPS_DIR / "07_monitoring"
-ARTIFACTS_DIR = MLOPS_DIR / "artifacts"
+DIR_00_PULL_DATA = REPO_ROOT / "00_pull_data"
+DIR_01_FEATURE_ENGINEERING = REPO_ROOT / "01_feature_engineering"
+DIR_02_PREPROCESSING = REPO_ROOT / "02_preprocessing"
+DIR_03_TRAIN_MODEL = REPO_ROOT / "03_train_model"
+DIR_04_EVALUATION = REPO_ROOT / "04_evaluation"
+DIR_05_MODEL_REGISTRY = REPO_ROOT / "05_model_registry"
+DIR_06_DEPLOYMENT = REPO_ROOT / "06_deployment"
+DIR_07_MONITORING = REPO_ROOT / "07_monitoring"
+ARTIFACTS_DIR = REPO_ROOT / "artifacts"
 PIPELINE_ARTIFACTS_DIR = ARTIFACTS_DIR / "pipeline"
 STEPS_ARTIFACTS_DIR = PIPELINE_ARTIFACTS_DIR / "steps"
-PIPELINES_DIR = MLOPS_DIR / "pipelines"
+PIPELINES_DIR = REPO_ROOT / "pipelines"
 
 # Fichiers lourds par étape (référencés dans steps/*/state.json)
 STEP_02_MANIFEST = STEPS_ARTIFACTS_DIR / "02_preprocessing" / "preprocessing_manifest.json"

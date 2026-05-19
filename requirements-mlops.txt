@@ -3,6 +3,7 @@ dvc[s3]
 jupyter
 nbconvert
 ipykernel
+kfp>=2.0.0
 torch
 torchvision
 transformers

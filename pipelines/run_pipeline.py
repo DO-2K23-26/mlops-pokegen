@@ -3,9 +3,9 @@
 Orchestration du flux MLOps : exécute les notebooks .ipynb de chaque étape (nbconvert).
 
 Usage:
-  python mlops/pipelines/run_pipeline.py
-  python mlops/pipelines/run_pipeline.py --from-step 03_train_model --dry-run
-  python mlops/pipelines/run_pipeline.py --execute  # nécessite jupyter + dépendances GPU
+    python pipelines/run_pipeline.py
+    python pipelines/run_pipeline.py --from-step 03_train_model --dry-run
+    python pipelines/run_pipeline.py --execute  # nécessite jupyter + dépendances GPU
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-MLOPS_DIR = REPO_ROOT / "mlops"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+MLOPS_DIR = REPO_ROOT
 
 STEPS: list[tuple[str, Path]] = [
     ("00_pull_data", MLOPS_DIR / "00_pull_data" / "00_pull_data_dvc.ipynb"),
