@@ -40,6 +40,7 @@ def pokegen_pipeline(
     repo_url: str = "https://git.razano.dev/llabeyrie/mlops-dataset.git",
     revision: str = "main",
     r2_secret_name: str = "cloudflare-r2-keys",
+    cards_pvc_name: str = "pokegen-data",
     # --- feature engineering ---
     user_prompt: str = "A fierce fire dragon pokemon with wings and a blazing tail attack",
     # --- preprocessing ---
@@ -57,16 +58,21 @@ def pokegen_pipeline(
     guidance_scale: float = 7.5,
     sample_count: int = 4,
 ) -> None:
+    # All components that touch card images share a PVC mounted at /data.
+    # pull_data writes cards to /data/raw/cards; preprocessing/train/eval read from there.
+    _pvc_mount = "/data"
+
     pull = pull_data_component(
         repo_url=repo_url,
         revision=revision,
+        local_cards_dir=f"{_pvc_mount}/raw/cards",
     )
-
     kubernetes.use_secret_as_env(
         pull,
         secret_name=r2_secret_name,
         secret_key_to_env={"access_key_id": "AWS_ACCESS_KEY_ID", "secret_access_key": "AWS_SECRET_ACCESS_KEY"},
     )
+    kubernetes.mount_pvc(pull, pvc_name=cards_pvc_name, mount_path=_pvc_mount)
 
     fe = feature_engineering_component(
         input_results_dataset=pull.outputs["state_output"],
@@ -80,8 +86,8 @@ def pokegen_pipeline(
         val_fraction=val_fraction,
         split_seed=split_seed,
     )
-    # maintain notebook ordering: FE before preprocessing
     pre.after(fe)
+    kubernetes.mount_pvc(pre, pvc_name=cards_pvc_name, mount_path=_pvc_mount)
 
     trn = train_model_component(
         manifest_path=pre.outputs["manifest_output"],
@@ -92,8 +98,9 @@ def pokegen_pipeline(
         batch_size=batch_size,
     )
     trn.set_cpu_request("12").set_memory_request("32Gi").set_accelerator_type("nvidia.com/gpu").set_accelerator_limit("1")
+    kubernetes.mount_pvc(trn, pvc_name=cards_pvc_name, mount_path=_pvc_mount)
 
-    evaluation_component(
+    evl = evaluation_component(
         manifest_path=pre.outputs["manifest_output"],
         checkpoint_path=trn.outputs["checkpoint_output"],
         model_id=model_id,
@@ -101,6 +108,7 @@ def pokegen_pipeline(
         guidance_scale=guidance_scale,
         sample_count=sample_count,
     )
+    kubernetes.mount_pvc(evl, pvc_name=cards_pvc_name, mount_path=_pvc_mount)
 
 
 def compile_pipeline() -> None:
