@@ -47,10 +47,12 @@ def metadata_to_conditioning(meta: Dict) -> str:
 
 
 def collect_valid_image_paths(image_dir: Path) -> List[Path]:
+    print(f"Collecting image paths from {image_dir}...")
     all_paths = sorted(
         p for p in image_dir.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
     )
     image_paths: List[Path] = []
+    print(f"Found {len(all_paths)} image file(s) under {image_dir}, validating metadata and integrity...")
     for p in all_paths:
         try:
             meta = get_metadata_from_png(p)
@@ -59,8 +61,10 @@ def collect_valid_image_paths(image_dir: Path) -> List[Path]:
             with Image.open(p) as img:
                 img.verify()
             image_paths.append(p)
-        except Exception:
+        except Exception as e:
+            print(f"Error processing {p}: {e}")
             continue
+    print(f"{len(image_paths)} valid image(s) with pokemon_metadata found under {image_dir}")
     return image_paths
 
 
