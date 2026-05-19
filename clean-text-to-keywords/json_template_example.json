@@ -1,0 +1,35 @@
+{
+  "category": "Pokemon",
+  "name": "",
+  "rarity": "",
+  "hp": "",
+  "types": [""],
+  "evolveFrom": "",
+  "description": "",
+  "stage": "",
+  "attacks": [
+    {
+      "cost": [""],
+      "name": "",
+      "effect": ""
+    },
+    {
+      "cost": [""],
+      "name": "",
+      "effect": "",
+      "damage": 0
+    }
+  ],
+  "weaknesses": [
+    {
+      "type": "",
+      "value": ""
+    }
+  ],
+  "retreat": 0,
+  "regulationMark": "",
+  "legal": {
+    "standard": true,
+    "expanded": true
+  }
+}
