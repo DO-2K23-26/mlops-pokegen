@@ -1,0 +1,4 @@
+# Synchronisation des cartes depuis S3 (remote configuré dans .dvc/config).
+# Adapter le chemin S3 et exécuter : dvc pull data/raw/cards.dvc
+
+stages: {}

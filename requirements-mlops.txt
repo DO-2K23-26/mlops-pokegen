@@ -1,0 +1,18 @@
+# Dépendances pipeline MLOps (notebooks 00–07)
+dvc[s3]
+jupyter
+nbconvert
+ipykernel
+torch
+torchvision
+transformers
+diffusers
+peft
+accelerate
+safetensors
+Pillow
+matplotlib
+tqdm
+spacy
+yake
+# Après install : python -m spacy download en_core_web_sm

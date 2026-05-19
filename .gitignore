@@ -1,0 +1,9 @@
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/pipeline/
+artifacts/pipeline/steps/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+*.log

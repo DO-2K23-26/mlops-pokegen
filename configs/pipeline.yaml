@@ -1,0 +1,21 @@
+# Paramètres par défaut (surchargeables dans les notebooks via os.environ)
+
+data:
+  cards_dir: data/raw/cards
+
+training:
+  model_id: runwayml/stable-diffusion-v1-5
+  img_size: 512
+  batch_size: 4
+  epochs: 12
+  lr: 1.0e-5
+  val_fraction: 0.1
+  split_seed: 42
+
+lora:
+  r: 8
+  lora_alpha: 32
+
+inference:
+  num_inference_steps: 100
+  guidance_scale: 7.5
