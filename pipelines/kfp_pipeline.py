@@ -14,11 +14,12 @@ import argparse
 import sys
 from pathlib import Path
 
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from kfp import compiler, dsl
+from kfp import compiler, dsl, kubernetes
 from kfp.client import Client
 
 from src.components import (
@@ -40,6 +41,7 @@ def pokegen_pipeline(
     # --- data ---
     repo_url: str = "https://git.razano.dev/llabeyrie/mlops-dataset.git",
     revision: str = "main",
+    r2_secret_name: str = "cloudflare-r2-keys",
     # --- feature engineering ---
     user_prompt: str = "A fierce fire dragon pokemon with wings and a blazing tail attack",
     # --- preprocessing ---
@@ -49,17 +51,23 @@ def pokegen_pipeline(
     split_seed: int = 42,
     # --- training ---
     model_id: str = "runwayml/stable-diffusion-v1-5",
-    epochs: int = 12,
+    epochs: int = 1,
     lr: float = 1e-5,
     train_fraction: float = 1.0,
     # --- evaluation ---
-    num_inference_steps: int = 100,
+    num_inference_steps: int = 10,
     guidance_scale: float = 7.5,
     sample_count: int = 4,
 ) -> None:
     pull = pull_data_component(
         repo_url=repo_url,
         revision=revision,
+    )
+
+    kubernetes.use_secret_as_env(
+        pull_data_component,
+        secret_name=r2_secret_name,
+        secret_key_to_env={"AccessKey": "AWS_ACCESS_KEY_ID", "SecretKey": "AWS_SECRET_ACCESS_KEY"},
     )
 
     fe = feature_engineering_component(

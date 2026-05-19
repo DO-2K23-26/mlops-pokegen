@@ -37,17 +37,10 @@ def pull_data_component(
     remote_path: str = "cards",
     local_cards_dir: str = str(RAW_CARDS_DIR),
     dvc_file_path: str = str(RAW_CARDS_DIR.parent / "cards.dvc"),
-    aws_access_key_id: str | None = None,
-    aws_secret_access_key: str | None = None,
     aws_default_region: str = "auto",
 ) -> None:
     """Pull the card dataset from DVC-backed storage and persist the step state."""
-
-    if aws_access_key_id is not None:
-        os.environ["AWS_ACCESS_KEY_ID"] = aws_access_key_id
-    if aws_secret_access_key is not None:
-        os.environ["AWS_SECRET_ACCESS_KEY"] = aws_secret_access_key
-    os.environ["AWS_DEFAULT_REGION"] = aws_default_region
+    os.environ.setdefault("AWS_DEFAULT_REGION", aws_default_region)
 
     local_dir = Path(local_cards_dir)
     local_dir.parent.mkdir(parents=True, exist_ok=True)
