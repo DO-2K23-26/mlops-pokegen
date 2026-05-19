@@ -8,8 +8,6 @@ Upload and run on a live cluster:
     python pipelines/kfp_pipeline.py --host https://<kfp-host> [--run]
 """
 
-from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path
@@ -65,9 +63,9 @@ def pokegen_pipeline(
     )
 
     kubernetes.use_secret_as_env(
-        pull_data_component,
+        pull,
         secret_name=r2_secret_name,
-        secret_key_to_env={"AccessKey": "AWS_ACCESS_KEY_ID", "SecretKey": "AWS_SECRET_ACCESS_KEY"},
+        secret_key_to_env={"access_key_id": "AWS_ACCESS_KEY_ID", "secret_access_key": "AWS_SECRET_ACCESS_KEY"},
     )
 
     fe = feature_engineering_component(

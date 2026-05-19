@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "pokegen-shared"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "torch",
+    "torchvision",
+    "transformers",
+    "diffusers",
+    "peft",
+    "Pillow",
+    "spacy",
+    "yake",
+]
+
+[tool.setuptools]
+# shared/ → importable as `shared.*`
+# clean-text-to-keywords/ → importable as `pokegen_nlp.*`
+packages = ["shared", "pokegen_nlp"]
+
+[tool.setuptools.package-dir]
+"pokegen_nlp" = "clean-text-to-keywords"
