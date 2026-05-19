@@ -62,5 +62,5 @@ def pull_data_component(
         "dvc_file": str(Path(dvc_file_path).resolve()),
     }
 
-    _write_json(state_output_path, {"step": "00_pull_data", **payload})
+    _write_json(state_output.path, {"step": "00_pull_data", **payload})
     print(f"Pull termine - {n_png} PNG sous {local_dir}")

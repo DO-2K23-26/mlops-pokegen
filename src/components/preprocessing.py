@@ -87,6 +87,5 @@ def preprocessing_component(
         "img_size": img_size,
         "batch_size": batch_size,
     }
-    _write_json(state_output_path, {"step": "02_preprocessing", **payload})
+    _write_json(state_output.path, {"step": "02_preprocessing", **payload})
     print("Step output saved for 02_preprocessing")
-    return payload

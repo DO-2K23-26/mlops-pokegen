@@ -122,4 +122,4 @@ def evaluation_component(
         "eval_samples_path": str(samples_file.resolve()),
         "final_val_loss": val_losses[-1] if val_losses else None,
     }
-    _write_json(state_output_path, {"step": "04_evaluation", **payload})
+    _write_json(state_output.path, {"step": "04_evaluation", **payload})

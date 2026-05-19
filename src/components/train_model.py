@@ -200,4 +200,4 @@ def train_model_component(
         "final_train_loss": train_losses[-1] if train_losses else None,
         "final_val_loss": val_losses[-1] if val_losses else None,
     }
-    _write_json(state_output_path, {"step": "03_train_model", **payload})
+    _write_json(state_output.path, {"step": "03_train_model", **payload})
