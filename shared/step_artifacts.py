@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from mlops.shared.paths import PIPELINE_ARTIFACTS_DIR
+from shared.paths import PIPELINE_ARTIFACTS_DIR
 
 STEPS_DIR = PIPELINE_ARTIFACTS_DIR / "steps"
 STATE_FILENAME = "state.json"
@@ -80,7 +80,7 @@ def load_previous_step_output(step_id: str) -> Dict[str, Any]:
 
 def rel_path(path: Path) -> str:
     """Chemin relatif au repo pour sérialisation JSON portable."""
-    from mlops.shared.paths import REPO_ROOT
+    from shared.paths import REPO_ROOT
 
     try:
         return str(path.resolve().relative_to(REPO_ROOT.resolve()))
@@ -89,7 +89,7 @@ def rel_path(path: Path) -> str:
 
 
 def resolve_path(rel_or_abs: str) -> Path:
-    from mlops.shared.paths import REPO_ROOT
+    from shared.paths import REPO_ROOT
 
     p = Path(rel_or_abs)
     return p if p.is_absolute() else REPO_ROOT / p
