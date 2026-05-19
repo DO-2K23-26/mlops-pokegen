@@ -91,6 +91,7 @@ def pokegen_pipeline(
         fraction=train_fraction,
         batch_size=batch_size,
     )
+    trn.set_cpu_request("12").set_memory_request("32Gi").set_accelerator_type("nvidia.com/gpu").set_accelerator_limit("1")
 
     evaluation_component(
         manifest_path=pre.outputs["manifest_output"],

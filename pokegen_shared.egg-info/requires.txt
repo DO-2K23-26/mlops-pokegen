@@ -1,0 +1,8 @@
+torch
+torchvision
+transformers
+diffusers
+peft
+Pillow
+spacy
+yake
