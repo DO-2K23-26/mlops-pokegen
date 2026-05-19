@@ -1,6 +1,5 @@
 [core]
-    remote = s3remote
-['remote "s3remote"']
-    url = https://c2feb305a6d15f2c6236f90b01a8e83a.r2.cloudflarestorage.com/mlops-pokemon
-    # region = eu-west-3
-    # credentialpath = ...
+    remote = cloudflare
+['remote "cloudflare"']
+    url = s3://mlops-pokemon
+    endpointurl = https://c2feb305a6d15f2c6236f90b01a8e83a.r2.cloudflarestorage.com
