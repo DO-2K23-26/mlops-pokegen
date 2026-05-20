@@ -467,9 +467,10 @@ deploymentSpec:
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'torch' 'transformers'\
-          \ 'diffusers' 'peft' 'pillow' 'tqdm'  &&  python3 -m pip install --quiet\
-          \ --no-warn-script-location 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5;\
-          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+          \ 'diffusers' 'peft' 'pillow' 'tqdm' 'pokegen-shared @ git+https://github.com/DO-2K23-26/mlops-pokegen.git'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)

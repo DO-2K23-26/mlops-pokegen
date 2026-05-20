@@ -5,7 +5,7 @@ from kfp.dsl import component as kfp_component, Input, Output, Artifact
 _GIT_PKG = "pokegen-shared @ git+https://github.com/DO-2K23-26/mlops-pokegen.git"
 
 
-@kfp_component(packages_to_install=["torch", "transformers", "diffusers", "peft", "pillow", "tqdm"])
+@kfp_component(packages_to_install=["torch", "transformers", "diffusers", "peft", "pillow", "tqdm", _GIT_PKG])
 def train_model_component(
     checkpoint_output: Output[Artifact],
     state_output: Output[Artifact],
