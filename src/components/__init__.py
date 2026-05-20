@@ -2,6 +2,7 @@
 
 from .evaluation import evaluation_component
 from .feature_engineering import feature_engineering_component
+from .model_registry import model_registry_component
 from .preprocessing import preprocessing_component
 from .pull_data import pull_data_component
 from .train_model import train_model_component
@@ -12,4 +13,5 @@ __all__ = [
     "preprocessing_component",
     "train_model_component",
     "evaluation_component",
+    "model_registry_component",
 ]

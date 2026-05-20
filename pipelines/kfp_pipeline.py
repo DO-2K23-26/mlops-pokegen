@@ -23,6 +23,7 @@ from kfp.client import Client
 from src.components import (
     evaluation_component,
     feature_engineering_component,
+    model_registry_component,
     preprocessing_component,
     pull_data_component,
     train_model_component,
@@ -111,6 +112,12 @@ def pokegen_pipeline(
     )
     kubernetes.mount_pvc(evl, pvc_name=cards_pvc_name, mount_path=_pvc_mount)
     kubernetes.add_toleration(evl, key="nvidia.com/gpu", operator="Equal", value="present", effect="NoSchedule")
+
+    reg = model_registry_component(
+        checkpoint_path=trn.outputs["checkpoint_output"],
+        evaluation_state=evl.outputs["state_output"],
+    )
+    kubernetes.mount_pvc(reg, pvc_name=cards_pvc_name, mount_path=_pvc_mount)
 
 
 def compile_pipeline() -> None:
