@@ -19,9 +19,19 @@ def model_registry_component(
 
     from model_registry import ModelRegistry
 
-    # Resolve checkpoint PVC path from the JSON pointer artifact
-    pointer = json.loads(Path(checkpoint_path.path).read_text())
-    checkpoint_pvc_path = pointer["checkpoint_path"]
+    # Resolve checkpoint path — two formats:
+    # 1. JSON pointer {"checkpoint_path": "/data/..."} written by the PyTorchJob launcher
+    # 2. Raw binary .pt file written by the single-GPU train_model_component
+    _default_pvc_path = "/data/checkpoints/lora_checkpoint.pt"
+    try:
+        pointer = json.loads(Path(checkpoint_path.path).read_bytes().decode("utf-8"))
+        checkpoint_pvc_path = pointer["checkpoint_path"]
+    except (UnicodeDecodeError, json.JSONDecodeError, KeyError):
+        import shutil
+        Path(_default_pvc_path).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(checkpoint_path.path, _default_pvc_path)
+        checkpoint_pvc_path = _default_pvc_path
+        print(f"Copied binary checkpoint to PVC: {checkpoint_pvc_path}")
 
     # Read evaluation results for metadata
     eval_state = json.loads(Path(evaluation_state.path).read_text())

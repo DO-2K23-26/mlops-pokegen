@@ -417,9 +417,17 @@ deploymentSpec:
           \ int = 8080,\n    author: str = \"pokegen-pipeline\",\n) -> None:\n   \
           \ \"\"\"Register the trained LoRA checkpoint in the Kubeflow Model Registry.\"\
           \"\"\n    import json\n    from pathlib import Path\n\n    from model_registry\
-          \ import ModelRegistry\n\n    # Resolve checkpoint PVC path from the JSON\
-          \ pointer artifact\n    pointer = json.loads(Path(checkpoint_path.path).read_text())\n\
-          \    checkpoint_pvc_path = pointer[\"checkpoint_path\"]\n\n    # Read evaluation\
+          \ import ModelRegistry\n\n    # Resolve checkpoint path \u2014 two formats:\n\
+          \    # 1. JSON pointer {\"checkpoint_path\": \"/data/...\"} written by the\
+          \ PyTorchJob launcher\n    # 2. Raw binary .pt file written by the single-GPU\
+          \ train_model_component\n    _default_pvc_path = \"/data/checkpoints/lora_checkpoint.pt\"\
+          \n    try:\n        pointer = json.loads(Path(checkpoint_path.path).read_bytes().decode(\"\
+          utf-8\"))\n        checkpoint_pvc_path = pointer[\"checkpoint_path\"]\n\
+          \    except (UnicodeDecodeError, json.JSONDecodeError, KeyError):\n    \
+          \    import shutil\n        Path(_default_pvc_path).parent.mkdir(parents=True,\
+          \ exist_ok=True)\n        shutil.copy2(checkpoint_path.path, _default_pvc_path)\n\
+          \        checkpoint_pvc_path = _default_pvc_path\n        print(f\"Copied\
+          \ binary checkpoint to PVC: {checkpoint_pvc_path}\")\n\n    # Read evaluation\
           \ results for metadata\n    eval_state = json.loads(Path(evaluation_state.path).read_text())\n\
           \    final_val_loss = eval_state.get(\"final_val_loss\")\n    model_id =\
           \ eval_state.get(\"model_id\", \"runwayml/stable-diffusion-v1-5\")\n\n \
