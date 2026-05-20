@@ -99,6 +99,7 @@ def pokegen_pipeline(
     )
     trn.set_cpu_request("12").set_memory_request("32Gi").set_accelerator_type("nvidia.com/gpu").set_accelerator_limit("1")
     kubernetes.mount_pvc(trn, pvc_name=cards_pvc_name, mount_path=_pvc_mount)
+    kubernetes.add_toleration(trn, key="nvidia.com/gpu", operator="Equal", value="present", effect="NoSchedule")
 
     evl = evaluation_component(
         manifest_path=pre.outputs["manifest_output"],
@@ -109,6 +110,7 @@ def pokegen_pipeline(
         sample_count=sample_count,
     )
     kubernetes.mount_pvc(evl, pvc_name=cards_pvc_name, mount_path=_pvc_mount)
+    kubernetes.add_toleration(evl, key="nvidia.com/gpu", operator="Equal", value="present", effect="NoSchedule")
 
 
 def compile_pipeline() -> None:

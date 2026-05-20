@@ -764,6 +764,11 @@ platforms:
             mountPath: /data
             pvcNameParameter:
               componentInputParameter: cards_pvc_name
+          tolerations:
+          - effect: NoSchedule
+            key: nvidia.com/gpu
+            operator: Equal
+            value: present
         exec-preprocessing-component:
           pvcMount:
           - componentInputParameter: cards_pvc_name
@@ -791,3 +796,8 @@ platforms:
             mountPath: /data
             pvcNameParameter:
               componentInputParameter: cards_pvc_name
+          tolerations:
+          - effect: NoSchedule
+            key: nvidia.com/gpu
+            operator: Equal
+            value: present
