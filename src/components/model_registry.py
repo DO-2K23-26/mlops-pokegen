@@ -12,6 +12,7 @@ def model_registry_component(
     registry_host: str = "http://model-registry-service.default.svc.cluster.local",
     registry_port: int = 8080,
     author: str = "pokegen-pipeline",
+    kubeflow_namespace: str = "pokegen",
 ) -> None:
     """Register the trained LoRA checkpoint in the Kubeflow Model Registry."""
     import json
@@ -56,7 +57,7 @@ def model_registry_component(
             version = f"v{n}"
             break
 
-    metadata: dict = {"base_model": model_id}
+    metadata: dict = {"base_model": model_id, "namespace": kubeflow_namespace}
     if final_val_loss is not None:
         metadata["val_loss"] = round(float(final_val_loss), 6)
 

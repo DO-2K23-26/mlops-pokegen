@@ -107,6 +107,10 @@ components:
           defaultValue: pokegen-pipeline
           isOptional: true
           parameterType: STRING
+        kubeflow_namespace:
+          defaultValue: pokegen
+          isOptional: true
+          parameterType: STRING
         model_name:
           defaultValue: pokegen-lora-sd15
           isOptional: true
@@ -414,21 +418,22 @@ deploymentSpec:
           \    checkpoint_path: Input[Artifact],\n    evaluation_state: Input[Artifact],\n\
           \    model_name: str = \"pokegen-lora-sd15\",\n    registry_host: str =\
           \ \"http://model-registry-service.default.svc.cluster.local\",\n    registry_port:\
-          \ int = 8080,\n    author: str = \"pokegen-pipeline\",\n) -> None:\n   \
-          \ \"\"\"Register the trained LoRA checkpoint in the Kubeflow Model Registry.\"\
-          \"\"\n    import json\n    from pathlib import Path\n\n    from model_registry\
-          \ import ModelRegistry\n\n    # Resolve checkpoint path \u2014 two formats:\n\
-          \    # 1. JSON pointer {\"checkpoint_path\": \"/data/...\"} written by the\
-          \ PyTorchJob launcher\n    # 2. Raw binary .pt file written by the single-GPU\
-          \ train_model_component\n    _default_pvc_path = \"/data/checkpoints/lora_checkpoint.pt\"\
-          \n    try:\n        pointer = json.loads(Path(checkpoint_path.path).read_bytes().decode(\"\
-          utf-8\"))\n        checkpoint_pvc_path = pointer[\"checkpoint_path\"]\n\
-          \    except (UnicodeDecodeError, json.JSONDecodeError, KeyError):\n    \
-          \    import shutil\n        Path(_default_pvc_path).parent.mkdir(parents=True,\
-          \ exist_ok=True)\n        shutil.copy2(checkpoint_path.path, _default_pvc_path)\n\
-          \        checkpoint_pvc_path = _default_pvc_path\n        print(f\"Copied\
-          \ binary checkpoint to PVC: {checkpoint_pvc_path}\")\n\n    # Read evaluation\
-          \ results for metadata\n    eval_state = json.loads(Path(evaluation_state.path).read_text())\n\
+          \ int = 8080,\n    author: str = \"pokegen-pipeline\",\n    kubeflow_namespace:\
+          \ str = \"pokegen\",\n) -> None:\n    \"\"\"Register the trained LoRA checkpoint\
+          \ in the Kubeflow Model Registry.\"\"\"\n    import json\n    from pathlib\
+          \ import Path\n\n    from model_registry import ModelRegistry\n\n    # Resolve\
+          \ checkpoint path \u2014 two formats:\n    # 1. JSON pointer {\"checkpoint_path\"\
+          : \"/data/...\"} written by the PyTorchJob launcher\n    # 2. Raw binary\
+          \ .pt file written by the single-GPU train_model_component\n    _default_pvc_path\
+          \ = \"/data/checkpoints/lora_checkpoint.pt\"\n    try:\n        pointer\
+          \ = json.loads(Path(checkpoint_path.path).read_bytes().decode(\"utf-8\"\
+          ))\n        checkpoint_pvc_path = pointer[\"checkpoint_path\"]\n    except\
+          \ (UnicodeDecodeError, json.JSONDecodeError, KeyError):\n        import\
+          \ shutil\n        Path(_default_pvc_path).parent.mkdir(parents=True, exist_ok=True)\n\
+          \        shutil.copy2(checkpoint_path.path, _default_pvc_path)\n       \
+          \ checkpoint_pvc_path = _default_pvc_path\n        print(f\"Copied binary\
+          \ checkpoint to PVC: {checkpoint_pvc_path}\")\n\n    # Read evaluation results\
+          \ for metadata\n    eval_state = json.loads(Path(evaluation_state.path).read_text())\n\
           \    final_val_loss = eval_state.get(\"final_val_loss\")\n    model_id =\
           \ eval_state.get(\"model_id\", \"runwayml/stable-diffusion-v1-5\")\n\n \
           \   registry = ModelRegistry(\n        server_address=registry_host,\n \
@@ -437,9 +442,10 @@ deploymentSpec:
           \ versions\n    version = \"v1\"\n    n = 1\n    while True:\n        try:\n\
           \            registry.get_model_version(model_name, f\"v{n}\")\n       \
           \     n += 1\n        except Exception:\n            version = f\"v{n}\"\
-          \n            break\n\n    metadata: dict = {\"base_model\": model_id}\n\
-          \    if final_val_loss is not None:\n        metadata[\"val_loss\"] = round(float(final_val_loss),\
-          \ 6)\n\n    registry.register_model(\n        model_name,\n        f\"pvc://{checkpoint_pvc_path}\"\
+          \n            break\n\n    metadata: dict = {\"base_model\": model_id, \"\
+          namespace\": kubeflow_namespace}\n    if final_val_loss is not None:\n \
+          \       metadata[\"val_loss\"] = round(float(final_val_loss), 6)\n\n   \
+          \ registry.register_model(\n        model_name,\n        f\"pvc://{checkpoint_pvc_path}\"\
           ,\n        model_format_name=\"pytorch\",\n        model_format_version=\"\
           2\",\n        version=version,\n        description=f\"SD 1.5 LoRA fine-tuned\
           \ on Pok\xE9mon cards \u2014 val_loss={final_val_loss:.4f}\" if final_val_loss\
