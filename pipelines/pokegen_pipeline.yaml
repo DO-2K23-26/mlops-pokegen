@@ -115,8 +115,16 @@ components:
           defaultValue: pokegen-lora-sd15
           isOptional: true
           parameterType: STRING
+        r2_bucket:
+          defaultValue: mlops-pokemon
+          isOptional: true
+          parameterType: STRING
+        r2_endpoint_url:
+          defaultValue: https://c2feb305a6d15f2c6236f90b01a8e83a.r2.cloudflarestorage.com
+          isOptional: true
+          parameterType: STRING
         registry_host:
-          defaultValue: http://model-registry-service.default.svc.cluster.local
+          defaultValue: http://model-registry-service.pokegen.svc.cluster.local
           isOptional: true
           parameterType: STRING
         registry_port:
@@ -400,9 +408,9 @@ deploymentSpec:
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
           \ python3 -m pip install --quiet --no-warn-script-location 'model-registry==0.3.9'\
-          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
-          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
-          $0\" \"$@\"\n"
+          \ 'boto3'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.16.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
         - sh
         - -ec
         - 'program_path=$(mktemp -d)
@@ -416,52 +424,58 @@ deploymentSpec:
         - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
           \ *\n\ndef model_registry_component(\n    state_output: Output[Artifact],\n\
           \    checkpoint_path: Input[Artifact],\n    evaluation_state: Input[Artifact],\n\
-          \    model_name: str = \"pokegen-lora-sd15\",\n    registry_host: str =\
-          \ \"http://model-registry-service.default.svc.cluster.local\",\n    registry_port:\
-          \ int = 8080,\n    author: str = \"pokegen-pipeline\",\n    kubeflow_namespace:\
-          \ str = \"pokegen\",\n) -> None:\n    \"\"\"Register the trained LoRA checkpoint\
-          \ in the Kubeflow Model Registry.\"\"\"\n    import json\n    from pathlib\
-          \ import Path\n\n    from model_registry import ModelRegistry\n\n    # Resolve\
-          \ checkpoint path \u2014 two formats:\n    # 1. JSON pointer {\"checkpoint_path\"\
-          : \"/data/...\"} written by the PyTorchJob launcher\n    # 2. Raw binary\
-          \ .pt file written by the single-GPU train_model_component\n    _default_pvc_path\
-          \ = \"/data/checkpoints/lora_checkpoint.pt\"\n    try:\n        pointer\
-          \ = json.loads(Path(checkpoint_path.path).read_bytes().decode(\"utf-8\"\
-          ))\n        checkpoint_pvc_path = pointer[\"checkpoint_path\"]\n    except\
-          \ (UnicodeDecodeError, json.JSONDecodeError, KeyError):\n        import\
-          \ shutil\n        Path(_default_pvc_path).parent.mkdir(parents=True, exist_ok=True)\n\
+          \    model_name: str = \"pokegen-lora-sd15\",\n    r2_bucket: str = \"mlops-pokemon\"\
+          ,\n    r2_endpoint_url: str = \"https://c2feb305a6d15f2c6236f90b01a8e83a.r2.cloudflarestorage.com\"\
+          ,\n    registry_host: str = \"http://model-registry-service.pokegen.svc.cluster.local\"\
+          ,\n    registry_port: int = 8080,\n    author: str = \"pokegen-pipeline\"\
+          ,\n    kubeflow_namespace: str = \"pokegen\",\n) -> None:\n    \"\"\"Upload\
+          \ LoRA checkpoint to R2 and register it in the namespace Model Registry.\"\
+          \"\"\n    import json\n    import os\n    import shutil\n    from pathlib\
+          \ import Path\n\n    import boto3\n    from model_registry import ModelRegistry\n\
+          \    from model_registry import utils as mr_utils\n\n    # --- resolve checkpoint\
+          \ file ---\n    # Handles two formats:\n    #   1. JSON pointer {\"checkpoint_path\"\
+          : \"/data/...\"} from PyTorchJob launcher\n    #   2. Raw binary .pt file\
+          \ from single-GPU train_model_component\n    _default_pvc_path = \"/data/checkpoints/lora_checkpoint.pt\"\
+          \n    try:\n        pointer = json.loads(Path(checkpoint_path.path).read_bytes().decode(\"\
+          utf-8\"))\n        checkpoint_pvc_path = pointer[\"checkpoint_path\"]\n\
+          \    except (UnicodeDecodeError, json.JSONDecodeError, KeyError):\n    \
+          \    Path(_default_pvc_path).parent.mkdir(parents=True, exist_ok=True)\n\
           \        shutil.copy2(checkpoint_path.path, _default_pvc_path)\n       \
-          \ checkpoint_pvc_path = _default_pvc_path\n        print(f\"Copied binary\
-          \ checkpoint to PVC: {checkpoint_pvc_path}\")\n\n    # Read evaluation results\
-          \ for metadata\n    eval_state = json.loads(Path(evaluation_state.path).read_text())\n\
+          \ checkpoint_pvc_path = _default_pvc_path\n\n    # --- read evaluation metadata\
+          \ ---\n    eval_state = json.loads(Path(evaluation_state.path).read_text())\n\
           \    final_val_loss = eval_state.get(\"final_val_loss\")\n    model_id =\
           \ eval_state.get(\"model_id\", \"runwayml/stable-diffusion-v1-5\")\n\n \
-          \   registry = ModelRegistry(\n        server_address=registry_host,\n \
-          \       port=registry_port,\n        author=author,\n        is_secure=False,\n\
-          \    )\n\n    # Semantic versioning: find the next vN by probing existing\
-          \ versions\n    version = \"v1\"\n    n = 1\n    while True:\n        try:\n\
-          \            registry.get_model_version(model_name, f\"v{n}\")\n       \
-          \     n += 1\n        except Exception:\n            version = f\"v{n}\"\
-          \n            break\n\n    metadata: dict = {\"base_model\": model_id, \"\
-          namespace\": kubeflow_namespace}\n    if final_val_loss is not None:\n \
-          \       metadata[\"val_loss\"] = round(float(final_val_loss), 6)\n\n   \
-          \ registry.register_model(\n        model_name,\n        f\"pvc://{checkpoint_pvc_path}\"\
-          ,\n        model_format_name=\"pytorch\",\n        model_format_version=\"\
-          2\",\n        version=version,\n        description=f\"SD 1.5 LoRA fine-tuned\
-          \ on Pok\xE9mon cards \u2014 val_loss={final_val_loss:.4f}\" if final_val_loss\
-          \ else \"SD 1.5 LoRA fine-tuned on Pok\xE9mon cards\",\n        metadata=metadata,\n\
-          \    )\n\n    # Retrieve IDs needed for KServe InferenceService labels\n\
-          \    registered_model = registry.get_registered_model(model_name)\n    model_version\
-          \ = registry.get_model_version(model_name, version)\n\n    print(f\"Registered\
-          \ '{model_name}' {version} (model_id={registered_model.id}, version_id={model_version.id})\"\
-          )\n\n    out = Path(state_output.path)\n    out.parent.mkdir(parents=True,\
-          \ exist_ok=True)\n    out.write_text(json.dumps({\n        \"step\": \"\
-          05_model_registry\",\n        \"model_name\": model_name,\n        \"version\"\
-          : version,\n        \"registered_model_id\": registered_model.id,\n    \
-          \    \"model_version_id\": model_version.id,\n        \"checkpoint_path\"\
-          : checkpoint_pvc_path,\n        \"val_loss\": final_val_loss,\n        \"\
-          registry_host\": registry_host,\n    }, indent=2, ensure_ascii=False), encoding=\"\
-          utf-8\")\n\n"
+          \   # --- semantic versioning: find next vN ---\n    registry = ModelRegistry(\n\
+          \        server_address=registry_host,\n        port=registry_port,\n  \
+          \      author=author,\n        is_secure=False,\n    )\n    version = \"\
+          v1\"\n    n = 1\n    while True:\n        try:\n            registry.get_model_version(model_name,\
+          \ f\"v{n}\")\n            n += 1\n        except Exception:\n          \
+          \  version = f\"v{n}\"\n            break\n\n    # --- upload checkpoint\
+          \ to R2 ---\n    s3_key = f\"models/{model_name}/{version}/lora_checkpoint.pt\"\
+          \n    s3 = boto3.client(\n        \"s3\",\n        endpoint_url=r2_endpoint_url,\n\
+          \        aws_access_key_id=os.environ[\"AWS_ACCESS_KEY_ID\"],\n        aws_secret_access_key=os.environ[\"\
+          AWS_SECRET_ACCESS_KEY\"],\n        region_name=\"auto\",\n    )\n    s3.upload_file(checkpoint_pvc_path,\
+          \ r2_bucket, s3_key)\n    print(f\"Uploaded checkpoint to s3://{r2_bucket}/{s3_key}\"\
+          )\n\n    # --- register model ---\n    metadata: dict = {\n        \"base_model\"\
+          : model_id,\n        \"namespace\": kubeflow_namespace,\n    }\n    if final_val_loss\
+          \ is not None:\n        metadata[\"val_loss\"] = round(float(final_val_loss),\
+          \ 6)\n\n    registry.register_model(\n        model_name,\n        uri=mr_utils.s3_uri_from(s3_key,\
+          \ r2_bucket, endpoint=r2_endpoint_url),\n        model_format_name=\"pytorch\"\
+          ,\n        model_format_version=\"2\",\n        version=version,\n     \
+          \   description=(\n            f\"SD 1.5 LoRA fine-tuned on Pok\xE9mon cards\
+          \ \u2014 val_loss={final_val_loss:.4f}\"\n            if final_val_loss\
+          \ else \"SD 1.5 LoRA fine-tuned on Pok\xE9mon cards\"\n        ),\n    \
+          \    metadata=metadata,\n    )\n\n    registered_model = registry.get_registered_model(model_name)\n\
+          \    model_version = registry.get_model_version(model_name, version)\n \
+          \   print(f\"Registered '{model_name}' {version} (model_id={registered_model.id},\
+          \ version_id={model_version.id})\")\n\n    out = Path(state_output.path)\n\
+          \    out.parent.mkdir(parents=True, exist_ok=True)\n    out.write_text(json.dumps({\n\
+          \        \"step\": \"05_model_registry\",\n        \"model_name\": model_name,\n\
+          \        \"version\": version,\n        \"registered_model_id\": registered_model.id,\n\
+          \        \"model_version_id\": model_version.id,\n        \"s3_uri\": mr_utils.s3_uri_from(s3_key,\
+          \ r2_bucket, endpoint=r2_endpoint_url),\n        \"val_loss\": final_val_loss,\n\
+          \        \"registry_host\": registry_host,\n    }, indent=2, ensure_ascii=False),\
+          \ encoding=\"utf-8\")\n\n"
         image: python:3.11
     exec-preprocessing-component:
       container:
@@ -911,6 +925,15 @@ platforms:
             mountPath: /data
             pvcNameParameter:
               componentInputParameter: cards_pvc_name
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: access_key_id
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: secret_access_key
+            optional: false
+            secretNameParameter:
+              componentInputParameter: r2_secret_name
         exec-preprocessing-component:
           pvcMount:
           - componentInputParameter: cards_pvc_name

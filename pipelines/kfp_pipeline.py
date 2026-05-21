@@ -118,6 +118,11 @@ def pokegen_pipeline(
         evaluation_state=evl.outputs["state_output"],
     )
     kubernetes.mount_pvc(reg, pvc_name=cards_pvc_name, mount_path=_pvc_mount)
+    kubernetes.use_secret_as_env(
+        reg,
+        secret_name=r2_secret_name,
+        secret_key_to_env={"access_key_id": "AWS_ACCESS_KEY_ID", "secret_access_key": "AWS_SECRET_ACCESS_KEY"},
+    )
 
 
 def compile_pipeline() -> None:
