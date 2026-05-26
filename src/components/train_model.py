@@ -27,10 +27,27 @@ def train_model_component(
     import uuid
     from pathlib import Path
 
-    from kubernetes import client as k8s_client, config as k8s_config
+    import os
+    from kubernetes import client as k8s_client
 
-    k8s_config.load_incluster_config()
-    custom_api = k8s_client.CustomObjectsApi()
+    token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+    print(f"[DEBUG] KUBERNETES_SERVICE_HOST={os.environ.get('KUBERNETES_SERVICE_HOST')}")
+    print(f"[DEBUG] KUBERNETES_SERVICE_PORT={os.environ.get('KUBERNETES_SERVICE_PORT')}")
+    print(f"[DEBUG] token exists={os.path.exists(token_path)}, ca exists={os.path.exists(ca_path)}")
+
+    # Always use the standard in-cluster DNS name, bypassing KUBERNETES_SERVICE_HOST
+    # which KFP launcher may set to the ml-pipeline server address.
+    configuration = k8s_client.Configuration()
+    configuration.host = "https://kubernetes.default.svc.cluster.local"
+    configuration.verify_ssl = True
+    configuration.ssl_ca_cert = ca_path
+    with open(token_path) as f:
+        token = f.read().strip()
+    configuration.api_key = {"authorization": "Bearer " + token}
+    print(f"[DEBUG] Using API host: {configuration.host}, token length: {len(token)}")
+    custom_api = k8s_client.CustomObjectsApi(k8s_client.ApiClient(configuration))
 
     # Stage manifest onto the PVC so TrainJob pods can access it
     manifest_pvc_path = "/data/manifests/train_manifest.json"

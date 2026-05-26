@@ -633,10 +633,23 @@ deploymentSpec:
           \ int = 2,\n) -> None:\n    \"\"\"Submit a TrainJob (trainer.kubeflow.org/v1alpha1)\
           \ for DDP training across GPU nodes and poll for completion.\"\"\"\n   \
           \ import json\n    import time\n    import uuid\n    from pathlib import\
-          \ Path\n\n    from kubernetes import client as k8s_client, config as k8s_config\n\
-          \n    k8s_config.load_incluster_config()\n    custom_api = k8s_client.CustomObjectsApi()\n\
-          \n    # Stage manifest onto the PVC so TrainJob pods can access it\n   \
-          \ manifest_pvc_path = \"/data/manifests/train_manifest.json\"\n    p = Path(manifest_pvc_path)\n\
+          \ Path\n\n    import os\n    from kubernetes import client as k8s_client\n\
+          \n    token_path = \"/var/run/secrets/kubernetes.io/serviceaccount/token\"\
+          \n    ca_path = \"/var/run/secrets/kubernetes.io/serviceaccount/ca.crt\"\
+          \n\n    print(f\"[DEBUG] KUBERNETES_SERVICE_HOST={os.environ.get('KUBERNETES_SERVICE_HOST')}\"\
+          )\n    print(f\"[DEBUG] KUBERNETES_SERVICE_PORT={os.environ.get('KUBERNETES_SERVICE_PORT')}\"\
+          )\n    print(f\"[DEBUG] token exists={os.path.exists(token_path)}, ca exists={os.path.exists(ca_path)}\"\
+          )\n\n    # Always use the standard in-cluster DNS name, bypassing KUBERNETES_SERVICE_HOST\n\
+          \    # which KFP launcher may set to the ml-pipeline server address.\n \
+          \   configuration = k8s_client.Configuration()\n    configuration.host =\
+          \ \"https://kubernetes.default.svc.cluster.local\"\n    configuration.verify_ssl\
+          \ = True\n    configuration.ssl_ca_cert = ca_path\n    with open(token_path)\
+          \ as f:\n        token = f.read().strip()\n    configuration.api_key = {\"\
+          authorization\": \"Bearer \" + token}\n    print(f\"[DEBUG] Using API host:\
+          \ {configuration.host}, token length: {len(token)}\")\n    custom_api =\
+          \ k8s_client.CustomObjectsApi(k8s_client.ApiClient(configuration))\n\n \
+          \   # Stage manifest onto the PVC so TrainJob pods can access it\n    manifest_pvc_path\
+          \ = \"/data/manifests/train_manifest.json\"\n    p = Path(manifest_pvc_path)\n\
           \    p.parent.mkdir(parents=True, exist_ok=True)\n    p.write_text(Path(manifest_path.path).read_text(encoding=\"\
           utf-8\"), encoding=\"utf-8\")\n\n    checkpoint_pvc_path = \"/data/checkpoints/lora_checkpoint.pt\"\
           \n\n    _GIT_PKG = \"pokegen-shared @ git+https://github.com/DO-2K23-26/mlops-pokegen.git\"\
