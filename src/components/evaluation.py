@@ -39,7 +39,10 @@ def evaluation_component(
     )
     from shared.sd_lora_models import build_sd_lora_stack
 
-    checkpoint = torch.load(checkpoint_path.path, map_location="cpu", weights_only=False)
+    # checkpoint_path artifact is a JSON pointer written by train_model_component
+    _ckpt_pointer = json.loads(Path(checkpoint_path.path).read_text())
+    _ckpt_file = _ckpt_pointer["checkpoint_path"]
+    checkpoint = torch.load(_ckpt_file, map_location="cpu", weights_only=False)
     train_losses = checkpoint["train_losses"]
     val_losses = checkpoint["val_losses"]
 
@@ -64,7 +67,7 @@ def evaluation_component(
     _, val_dataset, _, _, tokenizer = build_loaders_from_manifest(Path(manifest_path.path))
     vae, unet, text_encoder, _ = build_sd_lora_stack(device, model_id=model_id)
     unet.load_state_dict(
-        torch.load(checkpoint_path.path, map_location=device, weights_only=False)["unet_state_dict"]
+        torch.load(_ckpt_file, map_location=device, weights_only=False)["unet_state_dict"]
     )
     unet.train(False)
 

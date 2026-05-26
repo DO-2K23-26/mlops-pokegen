@@ -219,6 +219,10 @@ components:
           defaultValue: 4.0
           isOptional: true
           parameterType: NUMBER_INTEGER
+        cards_pvc_name:
+          defaultValue: pokegen-data
+          isOptional: true
+          parameterType: STRING
         epochs:
           defaultValue: 1.0
           isOptional: true
@@ -235,8 +239,16 @@ components:
           defaultValue: runwayml/stable-diffusion-v1-5
           isOptional: true
           parameterType: STRING
+        namespace:
+          defaultValue: pokegen
+          isOptional: true
+          parameterType: STRING
+        num_nodes:
+          defaultValue: 2.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
         num_workers:
-          defaultValue: 0.0
+          defaultValue: 4.0
           isOptional: true
           parameterType: NUMBER_INTEGER
         seed:
@@ -296,9 +308,11 @@ deploymentSpec:
           \ shared.pokemon_dataset import (\n        build_loaders_from_manifest,\n\
           \        get_metadata_from_png,\n        metadata_to_conditioning,\n   \
           \     pick_device,\n    )\n    from shared.sd_lora_models import build_sd_lora_stack\n\
-          \n    checkpoint = torch.load(checkpoint_path.path, map_location=\"cpu\"\
-          , weights_only=False)\n    train_losses = checkpoint[\"train_losses\"]\n\
-          \    val_losses = checkpoint[\"val_losses\"]\n\n    plt.figure(figsize=(8,\
+          \n    # checkpoint_path artifact is a JSON pointer written by train_model_component\n\
+          \    _ckpt_pointer = json.loads(Path(checkpoint_path.path).read_text())\n\
+          \    _ckpt_file = _ckpt_pointer[\"checkpoint_path\"]\n    checkpoint = torch.load(_ckpt_file,\
+          \ map_location=\"cpu\", weights_only=False)\n    train_losses = checkpoint[\"\
+          train_losses\"]\n    val_losses = checkpoint[\"val_losses\"]\n\n    plt.figure(figsize=(8,\
           \ 4))\n    plt.plot(train_losses, label=\"Train\")\n    plt.plot(val_losses,\
           \ label=\"Val\")\n    plt.xlabel(\"Epoch\")\n    plt.ylabel(\"MSE Loss\"\
           )\n    plt.legend()\n    plt.tight_layout()\n    loss_path = Path(loss_curves_output.path)\n\
@@ -310,7 +324,7 @@ deploymentSpec:
           \ encoding=\"utf-8\")\n\n    device = pick_device()\n    _, val_dataset,\
           \ _, _, tokenizer = build_loaders_from_manifest(Path(manifest_path.path))\n\
           \    vae, unet, text_encoder, _ = build_sd_lora_stack(device, model_id=model_id)\n\
-          \    unet.load_state_dict(\n        torch.load(checkpoint_path.path, map_location=device,\
+          \    unet.load_state_dict(\n        torch.load(_ckpt_file, map_location=device,\
           \ weights_only=False)[\"unet_state_dict\"]\n    )\n    unet.train(False)\n\
           \n    unet_copy = copy.deepcopy(unet)\n    pipe = StableDiffusionPipeline.from_pretrained(\n\
           \        model_id,\n        vae=vae,\n        unet=unet_copy.merge_and_unload(),\n\
@@ -595,8 +609,7 @@ deploymentSpec:
         - -c
         - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
           \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
-          \ python3 -m pip install --quiet --no-warn-script-location 'torch' 'transformers'\
-          \ 'diffusers' 'peft' 'pillow' 'tqdm' 'pokegen-shared @ git+https://github.com/DO-2K23-26/mlops-pokegen.git'\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kubernetes'\
           \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.16.1'\
           \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
           $0\" \"$@\"\n"
@@ -615,72 +628,123 @@ deploymentSpec:
           \    state_output: Output[Artifact],\n    manifest_path: Input[Artifact],\n\
           \    model_id: str = \"runwayml/stable-diffusion-v1-5\",\n    epochs: int\
           \ = 1,\n    lr: float = 1e-5,\n    fraction: float = 1.0,\n    seed: int\
-          \ = 42,\n    batch_size: int = 4,\n    num_workers: int = 0,\n) -> None:\n\
-          \    \"\"\"Train the LoRA U-Net, persist the checkpoint, and write step\
-          \ state.\"\"\"\n    import json\n    from pathlib import Path\n\n    import\
-          \ numpy as np\n    import torch\n    from torch.optim import AdamW\n   \
-          \ from torch.utils.data import DataLoader, Subset\n    from tqdm import\
-          \ tqdm\n\n    from shared.pokemon_dataset import build_loaders_from_manifest,\
-          \ pick_device\n    from shared.sd_lora_models import build_sd_lora_stack\n\
-          \n    train_dataset, val_dataset, _, _, _ = build_loaders_from_manifest(Path(manifest_path.path))\n\
-          \n    def make_subset(dataset, subset_fraction, subset_seed):\n        rng\
-          \ = np.random.default_rng(subset_seed)\n        size = len(dataset)\n  \
-          \      indices = rng.permutation(size)[: max(1, int(size * subset_fraction))]\n\
-          \        return Subset(dataset, indices)\n\n    train_small = make_subset(train_dataset,\
-          \ fraction, seed)\n    val_small = make_subset(val_dataset, fraction, seed\
-          \ + 1)\n\n    train_loader = DataLoader(train_small, batch_size=batch_size,\
-          \ shuffle=True, num_workers=num_workers)\n    val_loader = DataLoader(val_small,\
-          \ batch_size=batch_size, shuffle=False, num_workers=num_workers)\n\n   \
-          \ device = pick_device()\n    vae, unet, text_encoder, noise_scheduler =\
-          \ build_sd_lora_stack(device, model_id=model_id)\n    optimizer = AdamW(unet.parameters(),\
-          \ lr=lr)\n\n    checkpoint_file = Path(checkpoint_output.path)\n    checkpoint_file.parent.mkdir(parents=True,\
-          \ exist_ok=True)\n\n    train_losses: list = []\n    val_losses: list =\
-          \ []\n    start_epoch = 0\n\n    if checkpoint_file.exists():\n        ckpt\
-          \ = torch.load(checkpoint_file, map_location=device, weights_only=False)\n\
-          \        unet.load_state_dict(ckpt[\"unet_state_dict\"])\n        optimizer.load_state_dict(ckpt[\"\
-          optimizer_state_dict\"])\n        start_epoch = ckpt[\"epoch\"]\n      \
-          \  train_losses = ckpt[\"train_losses\"]\n        val_losses = ckpt[\"val_losses\"\
-          ]\n        print(f\"Resuming from epoch {start_epoch}\")\n\n    def encode_prompt(encoder,\
-          \ input_ids, attention_mask):\n        with torch.no_grad():\n         \
-          \   return encoder(input_ids, attention_mask=attention_mask)[0]\n\n    for\
-          \ epoch in range(start_epoch, epochs):\n        unet.train()\n        running\
-          \ = 0.0\n        for batch in tqdm(train_loader, desc=f\"Train {epoch +\
-          \ 1}/{epochs}\"):\n            pv = batch[\"pixel_values\"].to(device)\n\
-          \            ids = batch[\"input_ids\"].to(device)\n            mask = batch[\"\
-          attention_mask\"].to(device)\n            with torch.no_grad():\n      \
-          \          latents = vae.encode(pv).latent_dist.sample() * 0.18215\n   \
-          \         enc = encode_prompt(text_encoder, ids, mask)\n            noise\
-          \ = torch.randn_like(latents)\n            bs = latents.shape[0]\n     \
-          \       t = torch.randint(0, noise_scheduler.config.num_train_timesteps,\
-          \ (bs,), device=device).long()\n            noisy = noise_scheduler.add_noise(latents,\
-          \ noise, t)\n            pred = unet(noisy, t, enc).sample\n           \
-          \ loss = torch.nn.functional.mse_loss(pred.float(), noise.float())\n   \
-          \         optimizer.zero_grad()\n            loss.backward()\n         \
-          \   torch.nn.utils.clip_grad_norm_(unet.parameters(), 1.0)\n           \
-          \ optimizer.step()\n            running += loss.item() * bs\n        train_losses.append(running\
-          \ / len(train_small))\n\n        unet.train(False)\n        running = 0.0\n\
-          \        with torch.no_grad():\n            for batch in val_loader:\n \
-          \               pv = batch[\"pixel_values\"].to(device)\n              \
-          \  ids = batch[\"input_ids\"].to(device)\n                mask = batch[\"\
-          attention_mask\"].to(device)\n                latents = vae.encode(pv).latent_dist.sample()\
-          \ * 0.18215\n                enc = encode_prompt(text_encoder, ids, mask)\n\
-          \                noise = torch.randn_like(latents)\n                bs =\
-          \ latents.shape[0]\n                t = torch.randint(0, noise_scheduler.config.num_train_timesteps,\
-          \ (bs,), device=device).long()\n                noisy = noise_scheduler.add_noise(latents,\
-          \ noise, t)\n                pred = unet(noisy, t, enc).sample\n       \
-          \         running += torch.nn.functional.mse_loss(pred.float(), noise.float()).item()\
-          \ * bs\n        val_losses.append(running / len(val_small))\n        print(f\"\
-          Epoch {epoch + 1}: train={train_losses[-1]:.4f} val={val_losses[-1]:.4f}\"\
-          )\n\n        torch.save({\n            \"epoch\": epoch + 1,\n         \
-          \   \"unet_state_dict\": unet.state_dict(),\n            \"optimizer_state_dict\"\
-          : optimizer.state_dict(),\n            \"train_losses\": train_losses,\n\
-          \            \"val_losses\": val_losses,\n            \"model_id\": model_id,\n\
-          \        }, checkpoint_file)\n\n    out = Path(state_output.path)\n    out.parent.mkdir(parents=True,\
+          \ = 42,\n    batch_size: int = 4,\n    num_workers: int = 4,\n    cards_pvc_name:\
+          \ str = \"pokegen-data\",\n    namespace: str = \"pokegen\",\n    num_nodes:\
+          \ int = 2,\n) -> None:\n    \"\"\"Submit a TrainJob (trainer.kubeflow.org/v1alpha1)\
+          \ for DDP training across GPU nodes and poll for completion.\"\"\"\n   \
+          \ import json\n    import time\n    import uuid\n    from pathlib import\
+          \ Path\n\n    import os\n    from kubernetes import client as k8s_client\n\
+          \n    token_path = \"/var/run/secrets/kubernetes.io/serviceaccount/token\"\
+          \n    ca_path = \"/var/run/secrets/kubernetes.io/serviceaccount/ca.crt\"\
+          \n\n    print(f\"[DEBUG] KUBERNETES_SERVICE_HOST={os.environ.get('KUBERNETES_SERVICE_HOST')}\"\
+          )\n    print(f\"[DEBUG] KUBERNETES_SERVICE_PORT={os.environ.get('KUBERNETES_SERVICE_PORT')}\"\
+          )\n    print(f\"[DEBUG] token exists={os.path.exists(token_path)}, ca exists={os.path.exists(ca_path)}\"\
+          )\n\n    # Always use the standard in-cluster DNS name, bypassing KUBERNETES_SERVICE_HOST\n\
+          \    # which KFP launcher may set to the ml-pipeline server address.\n \
+          \   configuration = k8s_client.Configuration()\n    configuration.host =\
+          \ \"https://kubernetes.default.svc.cluster.local\"\n    configuration.verify_ssl\
+          \ = True\n    configuration.ssl_ca_cert = ca_path\n    with open(token_path)\
+          \ as f:\n        token = f.read().strip()\n    configuration.api_key = {\"\
+          authorization\": \"Bearer \" + token}\n    print(f\"[DEBUG] Using API host:\
+          \ {configuration.host}, token length: {len(token)}\")\n    custom_api =\
+          \ k8s_client.CustomObjectsApi(k8s_client.ApiClient(configuration))\n\n \
+          \   # Stage manifest onto the PVC so TrainJob pods can access it\n    manifest_pvc_path\
+          \ = \"/data/manifests/train_manifest.json\"\n    p = Path(manifest_pvc_path)\n\
+          \    p.parent.mkdir(parents=True, exist_ok=True)\n    p.write_text(Path(manifest_path.path).read_text(encoding=\"\
+          utf-8\"), encoding=\"utf-8\")\n\n    checkpoint_pvc_path = \"/data/checkpoints/lora_checkpoint.pt\"\
+          \n\n    _GIT_PKG = \"pokegen-shared @ git+https://github.com/DO-2K23-26/mlops-pokegen.git\"\
+          \n    _TRAIN_IMAGE = \"pytorch/pytorch:2.2.1-cuda12.1-cudnn8-runtime\"\n\
+          \n    train_cmd = \" \".join([\n        f\"pip install --quiet '{_GIT_PKG}'\
+          \ &&\",\n        \"python -m shared.train_distributed\",\n        f\"--manifest-path\
+          \ {manifest_pvc_path}\",\n        f\"--checkpoint-path {checkpoint_pvc_path}\"\
+          ,\n        f\"--model-id {model_id}\",\n        f\"--epochs {epochs}\",\n\
+          \        f\"--lr {lr}\",\n        f\"--fraction {fraction}\",\n        f\"\
+          --seed {seed}\",\n        f\"--batch-size {batch_size}\",\n        f\"--num-workers\
+          \ {num_workers}\",\n    ])\n\n    job_name = f\"pokegen-train-{uuid.uuid4().hex[:8]}\"\
+          \n\n    trainjob = {\n        \"apiVersion\": \"trainer.kubeflow.org/v1alpha1\"\
+          ,\n        \"kind\": \"TrainJob\",\n        \"metadata\": {\"name\": job_name,\
+          \ \"namespace\": namespace},\n        \"spec\": {\n            \"runtimeRef\"\
+          : {\n                \"name\": \"torch-distributed\",\n                \"\
+          apiGroup\": \"trainer.kubeflow.org\",\n                \"kind\": \"ClusterTrainingRuntime\"\
+          ,\n            },\n            \"trainer\": {\n                \"image\"\
+          : _TRAIN_IMAGE,\n                \"command\": [\"bash\", \"-c\"],\n    \
+          \            \"args\": [train_cmd],\n                \"numNodes\": num_nodes,\n\
+          \                \"numProcPerNode\": 1,\n                \"resourcesPerNode\"\
+          : {\n                    \"requests\": {\"nvidia.com/gpu\": \"1\", \"cpu\"\
+          : \"12\", \"memory\": \"32Gi\"},\n                    \"limits\": {\"nvidia.com/gpu\"\
+          : \"1\"},\n                },\n            },\n            \"runtimePatches\"\
+          : [\n                {\n                    \"manager\": \"pokegen-pipeline\"\
+          ,\n                    \"trainingRuntimeSpec\": {\n                    \
+          \    \"template\": {\n                            \"spec\": {\n        \
+          \                        \"replicatedJobs\": [\n                       \
+          \             {\n                                        \"name\": \"node\"\
+          ,\n                                        \"template\": {\n           \
+          \                                 \"spec\": {\n                        \
+          \                        \"template\": {\n                             \
+          \                       \"spec\": {\n                                  \
+          \                      \"tolerations\": [\n                            \
+          \                                {\n                                   \
+          \                             \"key\": \"nvidia.com/gpu\",\n           \
+          \                                                     \"operator\": \"Equal\"\
+          ,\n                                                                \"value\"\
+          : \"present\",\n                                                       \
+          \         \"effect\": \"NoSchedule\",\n                                \
+          \                            }\n                                       \
+          \                 ],\n                                                 \
+          \       \"volumes\": [\n                                               \
+          \             {\n                                                      \
+          \          \"name\": \"data\",\n                                       \
+          \                         \"persistentVolumeClaim\": {\n               \
+          \                                                     \"claimName\": cards_pvc_name\n\
+          \                                                                },\n  \
+          \                                                          }\n         \
+          \                                               ],\n                   \
+          \                                     \"containers\": [\n              \
+          \                                              {\n                     \
+          \                                           \"name\": \"node\",\n      \
+          \                                                          \"volumeMounts\"\
+          : [\n                                                                  \
+          \  {\n                                                                 \
+          \       \"name\": \"data\",\n                                          \
+          \                              \"mountPath\": \"/data\",\n             \
+          \                                                       }\n            \
+          \                                                    ],\n              \
+          \                                              }\n                     \
+          \                                   ],\n                               \
+          \                     }\n                                              \
+          \  }\n                                            }\n                  \
+          \                      },\n                                    }\n     \
+          \                           ]\n                            }\n         \
+          \               }\n                    },\n                }\n         \
+          \   ],\n        },\n    }\n\n    custom_api.create_namespaced_custom_object(\n\
+          \        group=\"trainer.kubeflow.org\", version=\"v1alpha1\",\n       \
+          \ namespace=namespace, plural=\"trainjobs\", body=trainjob,\n    )\n   \
+          \ print(f\"TrainJob '{job_name}' submitted in namespace '{namespace}'\"\
+          )\n\n    while True:\n        job = custom_api.get_namespaced_custom_object(\n\
+          \            group=\"trainer.kubeflow.org\", version=\"v1alpha1\",\n   \
+          \         namespace=namespace, plural=\"trainjobs\", name=job_name,\n  \
+          \      )\n        phase = None\n        for cond in job.get(\"status\",\
+          \ {}).get(\"conditions\", []):\n            if cond.get(\"status\") != \"\
+          True\":\n                continue\n            if cond.get(\"type\") ==\
+          \ \"Succeeded\":\n                phase = \"Succeeded\"\n            elif\
+          \ cond.get(\"type\") == \"Failed\":\n                phase = \"Failed\"\n\
+          \n        if phase == \"Succeeded\":\n            print(\"TrainJob succeeded\"\
+          )\n            break\n        if phase == \"Failed\":\n            raise\
+          \ RuntimeError(f\"TrainJob '{job_name}' failed\")\n\n        time.sleep(30)\n\
+          \n    # Write checkpoint pointer so evaluation_component can find the file\
+          \ on the PVC\n    ckpt_out = Path(checkpoint_output.path)\n    ckpt_out.parent.mkdir(parents=True,\
+          \ exist_ok=True)\n    ckpt_out.write_text(json.dumps({\"checkpoint_path\"\
+          : checkpoint_pvc_path}), encoding=\"utf-8\")\n\n    # Read losses written\
+          \ by rank-0 during training\n    results_path = Path(checkpoint_pvc_path).parent\
+          \ / \"train_results.json\"\n    try:\n        results = json.loads(results_path.read_text())\n\
+          \        train_losses = results.get(\"train_losses\", [])\n        val_losses\
+          \ = results.get(\"val_losses\", [])\n    except Exception:\n        train_losses,\
+          \ val_losses = [], []\n\n    out = Path(state_output.path)\n    out.parent.mkdir(parents=True,\
           \ exist_ok=True)\n    out.write_text(json.dumps({\n        \"step\": \"\
-          03_train_model\",\n        \"manifest_path\": str(Path(manifest_path.path).resolve()),\n\
-          \        \"checkpoint_path\": str(checkpoint_file.resolve()),\n        \"\
-          model_id\": model_id,\n        \"epochs_done\": len(train_losses),\n   \
-          \     \"final_train_loss\": train_losses[-1] if train_losses else None,\n\
+          03_train_model\",\n        \"job_name\": job_name,\n        \"manifest_path\"\
+          : manifest_pvc_path,\n        \"checkpoint_path\": checkpoint_pvc_path,\n\
+          \        \"model_id\": model_id,\n        \"epochs_done\": len(train_losses),\n\
+          \        \"final_train_loss\": train_losses[-1] if train_losses else None,\n\
           \        \"final_val_loss\": val_losses[-1] if val_losses else None,\n \
           \   }, indent=2, ensure_ascii=False), encoding=\"utf-8\")\n\n"
         image: python:3.11
