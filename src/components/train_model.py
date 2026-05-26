@@ -1,4 +1,4 @@
-"""KFP component — submits a PyTorchJob for DDP training and polls for completion."""
+"""KFP component — submits a TrainJob (Kubeflow Training v2) for DDP training and polls for completion."""
 
 from kfp.dsl import component as kfp_component, Input, Output, Artifact
 
@@ -21,7 +21,7 @@ def train_model_component(
     namespace: str = "pokegen",
     num_nodes: int = 2,
 ) -> None:
-    """Submit a PyTorchJob for DDP training across GPU nodes and poll for completion."""
+    """Submit a TrainJob (trainer.kubeflow.org/v1alpha1) for DDP training across GPU nodes and poll for completion."""
     import json
     import time
     import uuid
@@ -32,7 +32,7 @@ def train_model_component(
     k8s_config.load_incluster_config()
     custom_api = k8s_client.CustomObjectsApi()
 
-    # Stage manifest onto the PVC so PyTorchJob pods can access it
+    # Stage manifest onto the PVC so TrainJob pods can access it
     manifest_pvc_path = "/data/manifests/train_manifest.json"
     p = Path(manifest_pvc_path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -59,55 +59,91 @@ def train_model_component(
 
     job_name = f"pokegen-train-{uuid.uuid4().hex[:8]}"
 
-    def _replica_spec(replicas: int) -> dict:
-        return {
-            "replicas": replicas,
-            "restartPolicy": "OnFailure",
-            "template": {
-                "spec": {
-                    "tolerations": [{
-                        "key": "nvidia.com/gpu",
-                        "operator": "Equal",
-                        "value": "present",
-                        "effect": "NoSchedule",
-                    }],
-                    "volumes": [{"name": "data", "persistentVolumeClaim": {"claimName": cards_pvc_name}}],
-                    "containers": [{
-                        "name": "pytorch",
-                        "image": _TRAIN_IMAGE,
-                        "command": ["bash", "-c"],
-                        "args": [train_cmd],
-                        "resources": {
-                            "requests": {"nvidia.com/gpu": "1", "cpu": "12", "memory": "32Gi"},
-                            "limits": {"nvidia.com/gpu": "1"},
-                        },
-                        "volumeMounts": [{"name": "data", "mountPath": "/data"}],
-                    }],
-                }
-            },
-        }
-
-    replica_specs: dict = {"Master": _replica_spec(1)}
-    if num_nodes > 1:
-        replica_specs["Worker"] = _replica_spec(num_nodes - 1)
-
-    pytorchjob = {
-        "apiVersion": "kubeflow.org/v1",
-        "kind": "PyTorchJob",
+    trainjob = {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
         "metadata": {"name": job_name, "namespace": namespace},
-        "spec": {"pytorchReplicaSpecs": replica_specs},
+        "spec": {
+            "runtimeRef": {
+                "name": "torch-distributed",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "ClusterTrainingRuntime",
+            },
+            "trainer": {
+                "image": _TRAIN_IMAGE,
+                "command": ["bash", "-c"],
+                "args": [train_cmd],
+                "numNodes": num_nodes,
+                "numProcPerNode": 1,
+                "resourcesPerNode": {
+                    "requests": {"nvidia.com/gpu": "1", "cpu": "12", "memory": "32Gi"},
+                    "limits": {"nvidia.com/gpu": "1"},
+                },
+            },
+            "runtimePatches": [
+                {
+                    "manager": "pokegen-pipeline",
+                    "trainingRuntimeSpec": {
+                        "template": {
+                            "spec": {
+                                "replicatedJobs": [
+                                    {
+                                        "name": "node",
+                                        "template": {
+                                            "spec": {
+                                                "template": {
+                                                    "spec": {
+                                                        "tolerations": [
+                                                            {
+                                                                "key": "nvidia.com/gpu",
+                                                                "operator": "Equal",
+                                                                "value": "present",
+                                                                "effect": "NoSchedule",
+                                                            }
+                                                        ],
+                                                        "volumes": [
+                                                            {
+                                                                "name": "data",
+                                                                "persistentVolumeClaim": {
+                                                                    "claimName": cards_pvc_name
+                                                                },
+                                                            }
+                                                        ],
+                                                        "containers": [
+                                                            {
+                                                                "name": "node",
+                                                                "volumeMounts": [
+                                                                    {
+                                                                        "name": "data",
+                                                                        "mountPath": "/data",
+                                                                    }
+                                                                ],
+                                                            }
+                                                        ],
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                }
+            ],
+        },
     }
 
     custom_api.create_namespaced_custom_object(
-        group="kubeflow.org", version="v1",
-        namespace=namespace, plural="pytorchjobs", body=pytorchjob,
+        group="trainer.kubeflow.org", version="v1alpha1",
+        namespace=namespace, plural="trainjobs", body=trainjob,
     )
-    print(f"PyTorchJob '{job_name}' submitted in namespace '{namespace}'")
+    print(f"TrainJob '{job_name}' submitted in namespace '{namespace}'")
 
     while True:
         job = custom_api.get_namespaced_custom_object(
-            group="kubeflow.org", version="v1",
-            namespace=namespace, plural="pytorchjobs", name=job_name,
+            group="trainer.kubeflow.org", version="v1alpha1",
+            namespace=namespace, plural="trainjobs", name=job_name,
         )
         phase = None
         for cond in job.get("status", {}).get("conditions", []):
@@ -119,10 +155,10 @@ def train_model_component(
                 phase = "Failed"
 
         if phase == "Succeeded":
-            print("PyTorchJob succeeded")
+            print("TrainJob succeeded")
             break
         if phase == "Failed":
-            raise RuntimeError(f"PyTorchJob '{job_name}' failed")
+            raise RuntimeError(f"TrainJob '{job_name}' failed")
 
         time.sleep(30)
 
