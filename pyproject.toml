@@ -15,6 +15,7 @@ dependencies = [
     "Pillow",
     "spacy",
     "yake",
+    "kubeflow",
 ]
 
 [tool.setuptools]
