@@ -22,9 +22,6 @@ def train_model_component(
     from kubeflow.trainer import TrainerClient, CustomTrainer
     from shared.train_distributed import train_pytorch
 
-    for r in TrainerClient().list_runtimes():
-        print(f"Runtime: {r.name}")
-
     job_id = TrainerClient().train(
         trainer=CustomTrainer(
             func=train_pytorch,
