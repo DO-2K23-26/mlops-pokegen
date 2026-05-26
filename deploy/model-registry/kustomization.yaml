@@ -6,3 +6,38 @@ namespace: pokegen
 resources:
   - https://github.com/kubeflow/manifests/applications/hub/upstream/overlays/db?ref=master
   - https://github.com/kubeflow/manifests/applications/hub/upstream/options/istio?ref=master
+  - model-registry-allow.yaml
+
+patches:
+  - target:
+      kind: VirtualService
+      name: model-registry
+    patch: |-
+      - op: replace
+        path: /spec/http/0/route/0/destination/host
+        value: model-registry-service.pokegen.svc.cluster.local
+  - target:
+      kind: DestinationRule
+      name: model-registry-service
+    patch: |-
+      - op: replace
+        path: /spec/host
+        value: model-registry-service.pokegen.svc.cluster.local
+  - target:
+      kind: AuthorizationPolicy
+      name: model-registry-service
+    patch: |-
+      - op: add
+        path: /spec/rules/0/from/0/source/principals/-
+        value: cluster.local/ns/kubeflow/sa/model-registry-ui
+  - target:
+      kind: AuthorizationPolicy
+      name: ns-owner-access-istio
+    patch: |-
+      - op: add
+        path: /spec/rules/-
+        value:
+          from:
+            - source:
+                principals:
+                  - cluster.local/ns/kubeflow/sa/model-registry-ui

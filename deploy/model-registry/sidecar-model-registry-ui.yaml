@@ -1,0 +1,12 @@
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+  name: model-registry-ui-exception
+  namespace: kubeflow
+spec:
+  egress:
+  - hosts:
+    - "*/*"
+  workloadSelector:
+    labels:
+      app: model-registry-ui
