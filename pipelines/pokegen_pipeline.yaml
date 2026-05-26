@@ -618,15 +618,14 @@ deploymentSpec:
           \ = 42,\n    batch_size: int = 4,\n    num_workers: int = 0,\n) -> None:\n\
           \    \"\"\"Train the LoRA U-Net, persist the checkpoint, and write step\
           \ state.\"\"\"\n    from kubeflow.trainer import TrainerClient, CustomTrainer\n\
-          \    from shared.train_distributed import train_pytorch\n\n    job_id =\
-          \ TrainerClient().train(\n        trainer=CustomTrainer(\n            func=train_pytorch,\n\
-          \            func_kwargs={\n                \"manifest_path\": manifest_path.path,\n\
-          \                \"checkpoint_path\": checkpoint_output.path,\n        \
-          \        \"state_path\": state_output.path,\n                \"model_id\"\
-          : model_id,\n                \"epochs\": epochs,\n                \"lr\"\
-          : lr,\n                \"fraction\": fraction,\n                \"seed\"\
-          : seed,\n                \"batch_size\": batch_size,\n                \"\
-          num_workers\": num_workers,\n            },\n            num_nodes=4,\n\
+          \    from shared.train_distributed import train_pytorch\n\n    _mp = manifest_path.path\n\
+          \    _cp = checkpoint_output.path\n    _sp = state_output.path\n\n    def\
+          \ _train():\n        train_pytorch(\n            manifest_path=_mp,\n  \
+          \          checkpoint_path=_cp,\n            state_path=_sp,\n         \
+          \   model_id=model_id,\n            epochs=epochs,\n            lr=lr,\n\
+          \            fraction=fraction,\n            seed=seed,\n            batch_size=batch_size,\n\
+          \            num_workers=num_workers,\n        )\n\n    job_id = TrainerClient().train(\n\
+          \        trainer=CustomTrainer(\n            func=_train,\n            num_nodes=1,\n\
           \            resources_per_node={\n                \"cpu\": 3,\n       \
           \         \"memory\": \"16Gi\",\n                \"gpu\": 1,  # Comment\
           \ this line if you don't have GPUs.\n            },\n        )\n    )\n\n\

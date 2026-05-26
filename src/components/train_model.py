@@ -22,22 +22,28 @@ def train_model_component(
     from kubeflow.trainer import TrainerClient, CustomTrainer
     from shared.train_distributed import train_pytorch
 
+    _mp = manifest_path.path
+    _cp = checkpoint_output.path
+    _sp = state_output.path
+
+    def _train():
+        train_pytorch(
+            manifest_path=_mp,
+            checkpoint_path=_cp,
+            state_path=_sp,
+            model_id=model_id,
+            epochs=epochs,
+            lr=lr,
+            fraction=fraction,
+            seed=seed,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
+
     job_id = TrainerClient().train(
         trainer=CustomTrainer(
-            func=train_pytorch,
-            func_kwargs={
-                "manifest_path": manifest_path.path,
-                "checkpoint_path": checkpoint_output.path,
-                "state_path": state_output.path,
-                "model_id": model_id,
-                "epochs": epochs,
-                "lr": lr,
-                "fraction": fraction,
-                "seed": seed,
-                "batch_size": batch_size,
-                "num_workers": num_workers,
-            },
-            num_nodes=4,
+            func=_train,
+            num_nodes=1,
             resources_per_node={
                 "cpu": 3,
                 "memory": "16Gi",
